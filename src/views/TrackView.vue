@@ -226,12 +226,19 @@ function tokenAnnotations(lineId: string, t: Token): Annotation[] {
 
 interface FlowToken extends Token {
   lineId: string
+  lineStart: boolean
+  bindRight: boolean
 }
 
 function sectionTokens(lines: { id: string; text: string }[]): FlowToken[] {
   const out: FlowToken[] = []
-  for (const l of lines) {
-    for (const t of tokenize(l.text)) out.push({ ...t, lineId: l.id })
+  lines.forEach((l, li) => {
+    tokenize(l.text).forEach((t, ti) => {
+      out.push({ ...t, lineId: l.id, lineStart: li > 0 && ti === 0, bindRight: false })
+    })
+  })
+  for (let k = 0; k < out.length - 1; k++) {
+    if (out[k + 1].lineStart) out[k].bindRight = true
   }
   return out
 }
@@ -352,9 +359,10 @@ async function clearRhymes() {
           v-if="mode === 'keywords'"
           class="mt-4 uppercase text-active-lyric text-justify py-1"
         >
-          <span
-            v-for="(t, i) in sectionTokens(s.lines)"
-            :key="i"
+          <template v-for="(t, i) in sectionTokens(s.lines)" :key="i"><span
+            v-if="t.lineStart"
+            class="text-on-surface/30"
+          >/{{ '\u00a0' }}</span><span
             class="px-1 transition-colors"
             :class="[
               tokenAnnotations(t.lineId, t).length
@@ -367,7 +375,7 @@ async function clearRhymes() {
               hoveredAnnotationId = tokenAnnotations(t.lineId, t)[0]?.id ?? null
             "
             @mouseleave="hoveredAnnotationId = null"
-          >{{ t.text }}{{ ' ' }}</span>
+          >{{ t.text }}{{ t.bindRight ? '\u00a0' : ' ' }}</span></template>
         </p>
         <div v-else class="space-y-3 mt-4">
           <template v-for="l in s.lines" :key="l.id">
