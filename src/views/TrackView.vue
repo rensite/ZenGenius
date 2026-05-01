@@ -39,7 +39,7 @@ const track = computed(() => tracksStore.byId(props.id))
 const trackAnnotations = computed(() => annotationsStore.byTrack[props.id] ?? [])
 const trackDictionary = computed(() => dictionaryStore.byTrack[props.id] ?? [])
 
-type Mode = 'read' | 'annotate' | 'rhymes'
+type Mode = 'read' | 'annotate' | 'rhymes' | 'keywords'
 const mode = ref<Mode>('read')
 
 const aboutOpen = ref(false)
@@ -218,6 +218,26 @@ function tokenColor(lineId: string, t: Token): RhymeColor | null {
   return rhymesStore.colorAt(props.id, lineId, t.start, t.end)
 }
 
+function tokenAnnotations(lineId: string, t: Token): Annotation[] {
+  return trackAnnotations.value.filter(
+    (a) => a.lineId === lineId && a.charStart < t.end && a.charEnd > t.start,
+  )
+}
+
+function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
+  const found = tokenAnnotations(lineId, t)
+  if (found.length === 0) return
+  e.stopPropagation()
+  viewing.value = { annotations: found, lineId }
+}
+
+const hoveredAnnotationId = ref<string | null>(null)
+
+function isTokenHovered(lineId: string, t: Token): boolean {
+  if (!hoveredAnnotationId.value) return false
+  return tokenAnnotations(lineId, t).some((a) => a.id === hoveredAnnotationId.value)
+}
+
 const rhymeColorClass: Record<RhymeColor, string> = {
   blue: 'rhyme-blue',
   purple: 'rhyme-purple',
@@ -266,7 +286,7 @@ async function clearRhymes() {
         class="inline-flex items-center gap-1 p-1 rounded-full ghost-border bg-white/40 glass-blur"
       >
         <button
-          v-for="m in (['read', 'annotate', 'rhymes'] as Mode[])"
+          v-for="m in (['read', 'annotate', 'keywords', 'rhymes'] as Mode[])"
           :key="m"
           @click="mode = m"
           class="px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest transition-colors"
@@ -319,7 +339,7 @@ async function clearRhymes() {
           <template v-for="l in s.lines" :key="l.id">
             <!-- Read / Annotate: render as LyricLine with annotation underlines -->
             <div
-              v-if="mode !== 'rhymes'"
+              v-if="mode === 'read' || mode === 'annotate'"
               :data-line-id="l.id"
               class="px-2 py-1 rounded transition-colors"
               :class="mode === 'annotate' ? 'hover:bg-zinc-900/[0.02]' : ''"
@@ -335,7 +355,7 @@ async function clearRhymes() {
             </div>
             <!-- Rhymes: token-clickable -->
             <p
-              v-else
+              v-else-if="mode === 'rhymes'"
               class="text-inactive-lyric flex flex-wrap justify-center gap-x-3 gap-y-2 py-1"
             >
               <span
@@ -348,6 +368,28 @@ async function clearRhymes() {
                     : 'hover:bg-surface-container'
                 "
                 @click="clickToken(l.id, t)"
+              >{{ t.text }}</span>
+            </p>
+            <!-- Keywords: dim non-annotated tokens, keep annotated ones prominent -->
+            <p
+              v-else-if="mode === 'keywords'"
+              class="text-active-lyric uppercase flex flex-wrap justify-center gap-x-0 gap-y-2 py-1"
+            >
+              <span
+                v-for="t in tokenize(l.text)"
+                :key="t.start"
+                class="px-2 transition-colors"
+                :class="[
+                  tokenAnnotations(l.id, t).length
+                    ? 'text-on-surface cursor-pointer'
+                    : 'text-on-surface/25',
+                  isTokenHovered(l.id, t) ? 'bg-zinc-900/[0.06]' : 'rounded',
+                ]"
+                @click="clickKeywordToken(l.id, t, $event)"
+                @mouseenter="
+                  hoveredAnnotationId = tokenAnnotations(l.id, t)[0]?.id ?? null
+                "
+                @mouseleave="hoveredAnnotationId = null"
               >{{ t.text }}</span>
             </p>
           </template>
