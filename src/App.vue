@@ -4,6 +4,6 @@ import BackgroundDecoration from '@/components/BackgroundDecoration.vue'
 </script>
 
 <template>
-  <BackgroundDecoration />
+  <div class="no-print"><BackgroundDecoration /></div>
   <RouterView />
 </template>

@@ -285,14 +285,20 @@ async function clearRhymes() {
   if (!confirm('Clear all rhyme groups for this track?')) return
   await rhymesStore.clearAll(props.id)
 }
+
+function printPage() {
+  window.print()
+}
 </script>
 
 <template>
-  <TopBar />
+  <div class="no-print">
+    <TopBar />
+  </div>
 
   <main v-if="track" class="pt-24 pb-32 max-w-[860px] mx-auto px-gutter">
     <!-- Sub-header: breadcrumb, mode tabs, actions -->
-    <div class="flex items-center justify-between mb-10">
+    <div class="no-print flex items-center justify-between mb-10">
       <RouterLink
         to="/library"
         class="flex items-center gap-2 text-[12px] uppercase tracking-widest text-on-surface/50 hover:text-on-surface transition-colors"
@@ -331,6 +337,13 @@ async function clearRhymes() {
           title="Edit lyrics"
         >
           <Icon name="edit" :size="18" />
+        </button>
+        <button
+          @click="printPage"
+          class="w-9 h-9 rounded-full flex items-center justify-center hover:bg-zinc-900/5 text-on-surface/60 hover:text-on-surface transition-colors"
+          title="Print"
+        >
+          <Icon name="print" :size="18" />
         </button>
         <button
           @click="deleteTrack"
@@ -427,7 +440,7 @@ async function clearRhymes() {
   <Transition name="fade">
     <div
       v-if="mode === 'annotate' && !composing && !viewing"
-      class="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 bg-white/80 glass-blur ghost-border rounded-full shadow-xl shadow-zinc-900/5 flex items-center gap-3"
+      class="no-print fixed bottom-10 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 bg-white/80 glass-blur ghost-border rounded-full shadow-xl shadow-zinc-900/5 flex items-center gap-3"
     >
       <span class="text-[11px] uppercase tracking-widest text-on-surface/60">
         Select a phrase
@@ -446,7 +459,7 @@ async function clearRhymes() {
   <Transition name="fade">
     <nav
       v-if="mode === 'rhymes'"
-      class="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center gap-6 px-6 py-3 bg-white/40 glass-zen rounded-full border border-white/30 shadow-2xl shadow-zinc-500/10"
+      class="no-print fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center gap-6 px-6 py-3 bg-white/40 glass-zen rounded-full border border-white/30 shadow-2xl shadow-zinc-500/10"
     >
       <div class="flex items-center gap-3 pr-4 border-r border-zinc-200/50">
         <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Color</span>
@@ -478,7 +491,7 @@ async function clearRhymes() {
   </Transition>
 
   <!-- Side panels -->
-  <Transition name="slide-right">
+  <Transition name="slide-right" class="no-print">
     <AnnotationPanel
       v-if="viewing"
       :annotations="viewing.annotations"
@@ -489,7 +502,7 @@ async function clearRhymes() {
     />
   </Transition>
 
-  <Transition name="slide-right">
+  <Transition name="slide-right" class="no-print">
     <AnnotationComposerPanel
       v-if="composing"
       :selected-text="composing.text"
@@ -499,7 +512,7 @@ async function clearRhymes() {
     />
   </Transition>
 
-  <Transition name="slide-right">
+  <Transition name="slide-right" class="no-print">
     <LyricsEditorPanel
       v-if="editOpen && track"
       :track="track"
@@ -508,7 +521,7 @@ async function clearRhymes() {
     />
   </Transition>
 
-  <Transition name="slide-right">
+  <Transition name="slide-right" class="no-print">
     <TrackAboutPanel
       v-if="aboutOpen && track"
       :track="track"

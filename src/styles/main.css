@@ -114,3 +114,33 @@
   transform: translateX(100%);
   opacity: 0;
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  main {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    max-width: 14cm !important;
+    margin: 0 auto !important;
+  }
+  @page {
+    margin: 18mm;
+  }
+  * {
+    box-shadow: none !important;
+  }
+  .text-display-lyric {
+    font-size: 25px !important;
+  }
+  .text-active-lyric,
+  .text-inactive-lyric {
+    font-size: 13px !important;
+  }
+}
