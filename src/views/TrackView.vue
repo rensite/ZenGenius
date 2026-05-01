@@ -224,6 +224,18 @@ function tokenAnnotations(lineId: string, t: Token): Annotation[] {
   )
 }
 
+interface FlowToken extends Token {
+  lineId: string
+}
+
+function sectionTokens(lines: { id: string; text: string }[]): FlowToken[] {
+  const out: FlowToken[] = []
+  for (const l of lines) {
+    for (const t of tokenize(l.text)) out.push({ ...t, lineId: l.id })
+  }
+  return out
+}
+
 function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   const found = tokenAnnotations(lineId, t)
   if (found.length === 0) return
@@ -335,7 +347,29 @@ async function clearRhymes() {
     <article class="space-y-12">
       <section v-for="s in track.sections" :key="s.id">
         <SectionHeader :label="s.label" :performer="s.performer" />
-        <div class="space-y-3 mt-4">
+        <!-- Keywords: section flows as one justified block -->
+        <p
+          v-if="mode === 'keywords'"
+          class="mt-4 uppercase text-active-lyric text-justify py-1"
+        >
+          <span
+            v-for="(t, i) in sectionTokens(s.lines)"
+            :key="i"
+            class="px-1 transition-colors"
+            :class="[
+              tokenAnnotations(t.lineId, t).length
+                ? 'text-on-surface cursor-pointer'
+                : 'text-on-surface/25',
+              isTokenHovered(t.lineId, t) ? 'bg-zinc-900/[0.06]' : 'rounded',
+            ]"
+            @click="clickKeywordToken(t.lineId, t, $event)"
+            @mouseenter="
+              hoveredAnnotationId = tokenAnnotations(t.lineId, t)[0]?.id ?? null
+            "
+            @mouseleave="hoveredAnnotationId = null"
+          >{{ t.text }}{{ ' ' }}</span>
+        </p>
+        <div v-else class="space-y-3 mt-4">
           <template v-for="l in s.lines" :key="l.id">
             <!-- Read / Annotate: render as LyricLine with annotation underlines -->
             <div
@@ -368,28 +402,6 @@ async function clearRhymes() {
                     : 'hover:bg-surface-container'
                 "
                 @click="clickToken(l.id, t)"
-              >{{ t.text }}</span>
-            </p>
-            <!-- Keywords: dim non-annotated tokens, keep annotated ones prominent -->
-            <p
-              v-else-if="mode === 'keywords'"
-              class="text-active-lyric uppercase flex flex-wrap justify-center gap-x-0 gap-y-2 py-1"
-            >
-              <span
-                v-for="t in tokenize(l.text)"
-                :key="t.start"
-                class="px-2 transition-colors"
-                :class="[
-                  tokenAnnotations(l.id, t).length
-                    ? 'text-on-surface cursor-pointer'
-                    : 'text-on-surface/25',
-                  isTokenHovered(l.id, t) ? 'bg-zinc-900/[0.06]' : 'rounded',
-                ]"
-                @click="clickKeywordToken(l.id, t, $event)"
-                @mouseenter="
-                  hoveredAnnotationId = tokenAnnotations(l.id, t)[0]?.id ?? null
-                "
-                @mouseleave="hoveredAnnotationId = null"
               >{{ t.text }}</span>
             </p>
           </template>
