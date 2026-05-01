@@ -1,0 +1,61 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{vue,ts,js}'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        surface: '#f9f9fa',
+        'surface-dim': '#dadadb',
+        'surface-bright': '#f9f9fa',
+        'surface-container-lowest': '#ffffff',
+        'surface-container-low': '#f3f3f4',
+        'surface-container': '#eeeeef',
+        'surface-container-high': '#e8e8e9',
+        'surface-container-highest': '#e2e2e3',
+        'on-surface': '#1a1c1d',
+        'on-surface-variant': '#47464b',
+        'inverse-surface': '#2f3132',
+        'inverse-on-surface': '#f0f1f2',
+        outline: '#77767b',
+        'outline-variant': '#c8c5cb',
+        primary: '#000000',
+        'on-primary': '#ffffff',
+        'primary-container': '#1b1b1e',
+        'on-primary-container': '#858387',
+        secondary: '#5d5e66',
+        'on-secondary-container': '#63646c',
+        background: '#f9f9fa',
+        'on-background': '#1a1c1d',
+        'on-tertiary-container': '#83838c',
+      },
+      fontFamily: {
+        inter: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      fontSize: {
+        'display-lyric': ['38px', { lineHeight: '1.15', letterSpacing: '-0.02em', fontWeight: '600' }],
+        'active-lyric': ['20px', { lineHeight: '1.5', letterSpacing: '-0.005em', fontWeight: '500' }],
+        'inactive-lyric': ['20px', { lineHeight: '1.5', letterSpacing: '-0.005em', fontWeight: '400' }],
+        metadata: ['14px', { lineHeight: '20px', letterSpacing: '0.05em', fontWeight: '500' }],
+        'body-sm': ['16px', { lineHeight: '24px', fontWeight: '400' }],
+      },
+      borderRadius: {
+        DEFAULT: '0.25rem',
+        lg: '0.5rem',
+        xl: '0.75rem',
+        full: '9999px',
+      },
+      spacing: {
+        gutter: '1.5rem',
+        'lyric-gap': '2rem',
+        'section-padding': '4rem',
+        'focus-margin': '120px',
+        'container-max': '800px',
+      },
+      backdropBlur: {
+        zen: '40px',
+      },
+    },
+  },
+  plugins: [],
+}
