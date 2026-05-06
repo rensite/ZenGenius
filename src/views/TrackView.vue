@@ -14,7 +14,7 @@ import AnnotationComposerPanel from '@/components/AnnotationComposerPanel.vue'
 import LyricsEditorPanel from '@/components/LyricsEditorPanel.vue'
 import TrackAboutPanel from '@/components/TrackAboutPanel.vue'
 import Icon from '@/components/Icon.vue'
-import type { Annotation, AnnotationRange, AnnotationTag, RhymeColor } from '@/types/domain'
+import type { Annotation, AnnotationRange, AnnotationTag, DictionaryEntry, RhymeColor } from '@/types/domain'
 import { useUIStore } from '@/stores/ui'
 
 const props = defineProps<{ id: string }>()
@@ -204,6 +204,85 @@ function tokenAnnotations(lineId: string, t: Token): Annotation[] {
       (r) => r.lineId === lineId && r.charStart < t.end && r.charEnd > t.start,
     ),
   )
+}
+
+// Precompile one regex per dict term and run them once per line. The result
+// (Map<lineId, [{start, end, entry}, ...]>) is what the keywords-mode template
+// queries on hover, so we never rerun 1600 regexes per pointer move.
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const dictRangesByLine = computed<Map<string, { start: number; end: number; entry: DictionaryEntry }[]>>(() => {
+  const map = new Map<string, { start: number; end: number; entry: DictionaryEntry }[]>()
+  const t = track.value
+  if (!t || trackDictionary.value.length === 0) return map
+
+  const patterns = trackDictionary.value
+    .map((e) => ({ entry: e, term: e.term?.trim() ?? '' }))
+    .filter((p) => p.term.length >= 2)
+    .map((p) => ({
+      entry: p.entry,
+      rx: new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(p.term)}(?![\\p{L}\\p{N}])`, 'giu'),
+    }))
+
+  for (const s of t.sections) {
+    for (const l of s.lines) {
+      const ranges: { start: number; end: number; entry: DictionaryEntry }[] = []
+      for (const { entry, rx } of patterns) {
+        rx.lastIndex = 0
+        let m: RegExpExecArray | null
+        while ((m = rx.exec(l.text))) {
+          ranges.push({ start: m.index, end: m.index + m[0].length, entry })
+          if (m.index === rx.lastIndex) rx.lastIndex++
+        }
+      }
+      if (ranges.length) map.set(l.id, ranges)
+    }
+  }
+  return map
+})
+
+function tokenDictEntries(lineId: string, t: Token): DictionaryEntry[] {
+  const ranges = dictRangesByLine.value.get(lineId) ?? []
+  return ranges
+    .filter((r) => r.start < t.end && r.end > t.start)
+    .map((r) => r.entry)
+}
+
+function tokenDictTitle(lineId: string, t: Token): string | undefined {
+  const entries = tokenDictEntries(lineId, t)
+  if (entries.length === 0) return undefined
+  return entries
+    .map((e) => `${e.term} — ${e.definition.length > 200 ? e.definition.slice(0, 200) + '…' : e.definition}`)
+    .join('\n\n')
+}
+
+// Custom hover tooltip. Browser-native `title` has a ~1s delay before it shows
+// up, which makes the dict feel broken. This state drives a small floating
+// panel that appears instantly when the pointer enters a dict-highlighted
+// token and disappears on leave.
+const dictTooltip = ref<{ visible: boolean; x: number; y: number; entries: DictionaryEntry[] }>({
+  visible: false,
+  x: 0,
+  y: 0,
+  entries: [],
+})
+
+function showDictTooltip(lineId: string, t: Token, e: MouseEvent) {
+  const entries = tokenDictEntries(lineId, t)
+  if (entries.length === 0) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  dictTooltip.value = {
+    visible: true,
+    x: rect.left + rect.width / 2,
+    y: rect.top,
+    entries,
+  }
+}
+
+function hideDictTooltip() {
+  dictTooltip.value.visible = false
 }
 
 interface FlowToken extends Token {
@@ -543,15 +622,21 @@ function printPage() {
                 : 'text-on-surface/25 hover:text-on-surface/60',
               isTokenHovered(t.lineId, t) ? 'bg-zinc-900/[0.06]' : '',
               pendingHasToken(t) ? 'bg-amber-200/60 text-on-surface' : '',
+              tokenDictEntries(t.lineId, t).length ? 'dict-highlight text-on-surface' : '',
             ]"
+            :title="tokenDictTitle(t.lineId, t)"
             :data-line-id="t.lineId"
             :data-tok-start="t.start"
             :data-tok-end="t.end"
             @click="clickKeywordToken(t.lineId, t, $event)"
-            @mouseenter="
+            @mouseenter="(e) => {
               hoveredAnnotationId = tokenAnnotations(t.lineId, t)[0]?.id ?? null
+              showDictTooltip(t.lineId, t, e)
+            }"
+            @mouseleave="
+              hoveredAnnotationId = null;
+              hideDictTooltip();
             "
-            @mouseleave="hoveredAnnotationId = null"
           >{{ t.text }}{{ t.bindRight ? '\u00a0' : ' ' }}</span></template>
         </p>
         <div v-else class="space-y-3 mt-4">
@@ -697,5 +782,22 @@ function printPage() {
       :dictionary="trackDictionary"
       @close="aboutOpen = false"
     />
+  </Transition>
+
+  <Transition name="fade">
+    <div
+      v-if="dictTooltip.visible"
+      class="fixed z-[80] -translate-x-1/2 -translate-y-full pointer-events-none px-3 py-2 rounded-lg bg-zinc-900 text-white text-[12px] leading-snug shadow-xl shadow-zinc-900/20 max-w-sm normal-case tracking-normal"
+      :style="{ left: dictTooltip.x + 'px', top: (dictTooltip.y - 8) + 'px' }"
+    >
+      <p
+        v-for="e in dictTooltip.entries"
+        :key="e.id"
+        class="not-first:mt-2"
+      >
+        <span class="font-semibold">{{ e.term }}</span>
+        <span class="text-white/60"> — </span>{{ e.definition }}
+      </p>
+    </div>
   </Transition>
 </template>
