@@ -64,14 +64,17 @@ const spans = computed<Span[]>(() => {
 
   if (props.showAnnotations) {
     for (const a of props.annotations) {
-      ranges.push({
-        start: a.charStart,
-        end: Math.min(a.charEnd, text.length),
-        classes: ['annotation-highlight', 'cursor-pointer'],
-        title: a.body.slice(0, 80),
-        annotationId: a.id,
-        tags: a.tags,
-      })
+      for (const r of a.ranges) {
+        if (r.lineId !== props.line.id) continue
+        ranges.push({
+          start: r.charStart,
+          end: Math.min(r.charEnd, text.length),
+          classes: ['annotation-highlight', 'cursor-pointer'],
+          title: a.body.slice(0, 80),
+          annotationId: a.id,
+          tags: a.tags,
+        })
+      }
     }
   }
   if (props.showRhymes) {

@@ -7,18 +7,33 @@ import type {
   Track,
 } from '@/types/domain'
 
-function migrateAnnotation(a: Annotation & { type?: string; title?: string }): Annotation {
-  if (a.tags) return a
-  const tags: AnnotationTag[] = []
-  if (a.type === 'translation' || a.type === 'reference' || a.type === 'dictionary') {
+type LegacyAnnotation = Annotation & {
+  type?: string
+  title?: string
+  lineId?: ID
+  charStart?: number
+  charEnd?: number
+}
+
+function migrateAnnotation(a: LegacyAnnotation): Annotation {
+  const ranges =
+    a.ranges && a.ranges.length > 0
+      ? a.ranges
+      : a.lineId != null && a.charStart != null && a.charEnd != null
+        ? [{ lineId: a.lineId, charStart: a.charStart, charEnd: a.charEnd }]
+        : []
+  if (a.tags && a.ranges) return a
+  const tags: AnnotationTag[] = a.tags ?? []
+  if (
+    !a.tags &&
+    (a.type === 'translation' || a.type === 'reference' || a.type === 'dictionary')
+  ) {
     tags.push(a.type as AnnotationTag)
   }
   return {
     id: a.id,
     trackId: a.trackId,
-    lineId: a.lineId,
-    charStart: a.charStart,
-    charEnd: a.charEnd,
+    ranges,
     body: a.title ? `${a.title}\n\n${a.body}` : a.body,
     tags,
     contributor: a.contributor,

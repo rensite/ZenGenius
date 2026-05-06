@@ -44,7 +44,9 @@ export const useAnnotationsStore = defineStore('annotations', () => {
   }
 
   function forLine(trackId: ID, lineId: ID): Annotation[] {
-    return (byTrack.value[trackId] ?? []).filter((a) => a.lineId === lineId)
+    return (byTrack.value[trackId] ?? []).filter((a) =>
+      a.ranges.some((r) => r.lineId === lineId),
+    )
   }
 
   return { byTrack, loading, fetchFor, add, update, remove, forLine }

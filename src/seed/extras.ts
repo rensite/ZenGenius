@@ -7,9 +7,7 @@ export function buildSeedAnnotations(): Annotation[] {
     {
       id: `${t}-ann-1`,
       trackId: t,
-      lineId: `${t}-l3`,
-      charStart: 0,
-      charEnd: 35,
+      ranges: [{ lineId: `${t}-l3`, charStart: 0, charEnd: 35 }],
       tags: [],
       body:
         'The "fifteen windows" represent the multifaceted gaze of observers, while "burnt out lies" suggests the exhaustion of maintaining a false facade. There is a deliberate contrast between architectural clarity (windows) and the smoke-like quality of deceit.',
@@ -19,9 +17,7 @@ export function buildSeedAnnotations(): Annotation[] {
     {
       id: `${t}-ann-2`,
       trackId: t,
-      lineId: `${t}-l13`,
-      charStart: 0,
-      charEnd: 30,
+      ranges: [{ lineId: `${t}-l13`, charStart: 0, charEnd: 30 }],
       tags: ['reference'],
       body:
         'A skyline likened to a heart-rate trace — the city as a patient. The motif is reused in "Quiet Light" b-sides where buildings are repeatedly given clinical anatomy.',

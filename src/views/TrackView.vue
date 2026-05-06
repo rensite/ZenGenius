@@ -14,7 +14,7 @@ import AnnotationComposerPanel from '@/components/AnnotationComposerPanel.vue'
 import LyricsEditorPanel from '@/components/LyricsEditorPanel.vue'
 import TrackAboutPanel from '@/components/TrackAboutPanel.vue'
 import Icon from '@/components/Icon.vue'
-import type { Annotation, AnnotationTag, RhymeColor } from '@/types/domain'
+import type { Annotation, AnnotationRange, AnnotationTag, RhymeColor } from '@/types/domain'
 import { useUIStore } from '@/stores/ui'
 
 const props = defineProps<{ id: string }>()
@@ -32,71 +32,66 @@ onMounted(async () => {
   await annotationsStore.fetchFor(props.id)
   await rhymesStore.fetchFor(props.id)
   await dictionaryStore.fetchFor(props.id)
-  document.addEventListener('selectionchange', onSelectionChange)
 })
 
 const track = computed(() => tracksStore.byId(props.id))
 const trackAnnotations = computed(() => annotationsStore.byTrack[props.id] ?? [])
 const trackDictionary = computed(() => dictionaryStore.byTrack[props.id] ?? [])
 
-type Mode = 'read' | 'annotate' | 'rhymes' | 'keywords'
-const mode = ref<Mode>('read')
+type Mode = 'read' | 'rhymes' | 'keywords'
+const mode = ref<Mode>('keywords')
+
+const MIN_WIDTH = 480
+const MAX_WIDTH = 1280
+const containerWidth = ref<number>(
+  parseInt(localStorage.getItem('lyriclens.containerWidth') ?? '860', 10),
+)
+const resizing = ref(false)
+
+function startResize(e: MouseEvent, side: 'left' | 'right' = 'right') {
+  e.preventDefault()
+  resizing.value = true
+  const startX = e.clientX
+  const startW = containerWidth.value
+  const sign = side === 'right' ? 1 : -1
+  function onMove(ev: MouseEvent) {
+    const delta = (ev.clientX - startX) * 2 * sign
+    const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + delta))
+    containerWidth.value = next
+  }
+  function onUp() {
+    resizing.value = false
+    localStorage.setItem('lyriclens.containerWidth', String(containerWidth.value))
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
 
 const aboutOpen = ref(false)
 const editOpen = ref(false)
 const viewing = ref<{ annotations: Annotation[]; lineId: string } | null>(null)
 const composing = ref<{
-  lineId: string
-  start: number
-  end: number
+  ranges: AnnotationRange[]
   text: string
   existing?: Annotation
 } | null>(null)
+const pendingRanges = ref<AnnotationRange[]>([])
 
-function offsetWithin(root: HTMLElement, node: Node, offset: number): number {
-  let total = 0
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let n: Node | null
-  while ((n = walker.nextNode())) {
-    if (n === node) return total + offset
-    total += (n.nodeValue ?? '').length
+function lineTextById(lineId: string): string {
+  if (!track.value) return ''
+  for (const s of track.value.sections) {
+    const l = s.lines.find((x) => x.id === lineId)
+    if (l) return l.text
   }
-  return total
+  return ''
 }
 
-function findLineAncestor(node: Node | null): HTMLElement | null {
-  while (node && node !== document.body) {
-    if (node instanceof HTMLElement && node.dataset.lineId) return node
-    node = node.parentNode
-  }
-  return null
-}
-
-function onSelectionChange() {
-  if (mode.value !== 'annotate' || composing.value || editOpen.value) return
-  const sel = window.getSelection()
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
-  // Note: we don't dismiss here; the floating popup uses pending selection.
-}
-
-function tryStartCompose() {
-  const sel = window.getSelection()
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
-  const range = sel.getRangeAt(0)
-  const lineEl = findLineAncestor(range.startContainer)
-  if (!lineEl || !lineEl.contains(range.endContainer)) return
-  const a = offsetWithin(lineEl, range.startContainer, range.startOffset)
-  const b = offsetWithin(lineEl, range.endContainer, range.endOffset)
-  const start = Math.min(a, b)
-  const end = Math.max(a, b)
-  if (start === end) return
-  composing.value = {
-    lineId: lineEl.dataset.lineId!,
-    start,
-    end,
-    text: lineEl.innerText.slice(start, end),
-  }
-  viewing.value = null
+function rangesText(ranges: AnnotationRange[]): string {
+  return ranges
+    .map((r) => lineTextById(r.lineId).slice(r.charStart, r.charEnd))
+    .join(' · ')
 }
 
 async function saveAnnotation(payload: { tags: AnnotationTag[]; body: string }) {
@@ -110,32 +105,20 @@ async function saveAnnotation(payload: { tags: AnnotationTag[]; body: string }) 
   } else {
     await annotationsStore.add({
       trackId: props.id,
-      lineId: composing.value.lineId,
-      charStart: composing.value.start,
-      charEnd: composing.value.end,
+      ranges: composing.value.ranges,
       tags: payload.tags,
       body: payload.body,
     })
   }
   composing.value = null
+  pendingRanges.value = []
   window.getSelection()?.removeAllRanges()
 }
 
 function startEdit(a: Annotation) {
-  if (!track.value) return
-  let lineText = ''
-  for (const s of track.value.sections) {
-    const l = s.lines.find((x) => x.id === a.lineId)
-    if (l) {
-      lineText = l.text
-      break
-    }
-  }
   composing.value = {
-    lineId: a.lineId,
-    start: a.charStart,
-    end: a.charEnd,
-    text: lineText.slice(a.charStart, a.charEnd),
+    ranges: a.ranges.map((r) => ({ ...r })),
+    text: rangesText(a.ranges),
     existing: a,
   }
   viewing.value = null
@@ -148,16 +131,13 @@ function dismissCompose() {
 
 function onAnnotationClick(p: { annotations: Annotation[] }) {
   if (p.annotations.length === 0) return
-  viewing.value = { annotations: p.annotations, lineId: p.annotations[0].lineId }
+  const first = p.annotations[0]
+  viewing.value = { annotations: p.annotations, lineId: first.ranges[0]?.lineId ?? '' }
 }
 
 const viewingLineText = computed(() => {
-  if (!viewing.value || !track.value) return ''
-  for (const s of track.value.sections) {
-    const l = s.lines.find((x) => x.id === viewing.value!.lineId)
-    if (l) return l.text
-  }
-  return ''
+  if (!viewing.value) return ''
+  return lineTextById(viewing.value.lineId)
 })
 
 async function removeViewedAnnotation(id: string) {
@@ -219,22 +199,32 @@ function tokenColor(lineId: string, t: Token): RhymeColor | null {
 }
 
 function tokenAnnotations(lineId: string, t: Token): Annotation[] {
-  return trackAnnotations.value.filter(
-    (a) => a.lineId === lineId && a.charStart < t.end && a.charEnd > t.start,
+  return trackAnnotations.value.filter((a) =>
+    a.ranges.some(
+      (r) => r.lineId === lineId && r.charStart < t.end && r.charEnd > t.start,
+    ),
   )
 }
 
 interface FlowToken extends Token {
   lineId: string
+  tokIdx: number
   lineStart: boolean
   bindRight: boolean
 }
 
 function sectionTokens(lines: { id: string; text: string }[]): FlowToken[] {
   const out: FlowToken[] = []
+  let idx = 0
   lines.forEach((l, li) => {
     tokenize(l.text).forEach((t, ti) => {
-      out.push({ ...t, lineId: l.id, lineStart: li > 0 && ti === 0, bindRight: false })
+      out.push({
+        ...t,
+        lineId: l.id,
+        tokIdx: idx++,
+        lineStart: li > 0 && ti === 0,
+        bindRight: false,
+      })
     })
   })
   for (let k = 0; k < out.length - 1; k++) {
@@ -243,11 +233,154 @@ function sectionTokens(lines: { id: string; text: string }[]): FlowToken[] {
   return out
 }
 
+function sectionTokensFor(lineId: string): FlowToken[] {
+  if (!track.value) return []
+  for (const s of track.value.sections) {
+    if (s.lines.some((l) => l.id === lineId)) return sectionTokens(s.lines)
+  }
+  return []
+}
+
+function rangesFromTokens(tokens: FlowToken[]): AnnotationRange[] {
+  const byLine = new Map<string, { start: number; end: number }>()
+  for (const t of tokens) {
+    const r = byLine.get(t.lineId)
+    if (!r) byLine.set(t.lineId, { start: t.start, end: t.end })
+    else {
+      r.start = Math.min(r.start, t.start)
+      r.end = Math.max(r.end, t.end)
+    }
+  }
+  return [...byLine.entries()].map(([lineId, r]) => ({
+    lineId,
+    charStart: r.start,
+    charEnd: r.end,
+  }))
+}
+
+function rangesEqual(a: AnnotationRange, b: AnnotationRange): boolean {
+  return a.lineId === b.lineId && a.charStart === b.charStart && a.charEnd === b.charEnd
+}
+
+function pendingHasToken(t: FlowToken): boolean {
+  return pendingRanges.value.some(
+    (r) => r.lineId === t.lineId && r.charStart <= t.start && r.charEnd >= t.end,
+  )
+}
+
+function togglePendingToken(t: FlowToken) {
+  const tokenRange: AnnotationRange = {
+    lineId: t.lineId,
+    charStart: t.start,
+    charEnd: t.end,
+  }
+  const idx = pendingRanges.value.findIndex((r) => rangesEqual(r, tokenRange))
+  if (idx !== -1) pendingRanges.value.splice(idx, 1)
+  else pendingRanges.value.push(tokenRange)
+}
+
 function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
-  const found = tokenAnnotations(lineId, t)
-  if (found.length === 0) return
+  const sel = window.getSelection()
+  if (e.shiftKey) {
+    e.preventDefault()
+    e.stopPropagation()
+    sel?.removeAllRanges()
+    const flow = sectionTokensFor(lineId).find(
+      (x) => x.lineId === lineId && x.start === t.start && x.end === t.end,
+    )
+    if (flow) togglePendingToken(flow)
+    return
+  }
+  if (sel && !sel.isCollapsed) return
   e.stopPropagation()
-  viewing.value = { annotations: found, lineId }
+  const found = tokenAnnotations(lineId, t)
+  if (found.length > 0) {
+    viewing.value = { annotations: found, lineId }
+    return
+  }
+  composing.value = {
+    ranges: [{ lineId, charStart: t.start, charEnd: t.end }],
+    text: t.text,
+  }
+  pendingRanges.value = []
+  viewing.value = null
+}
+
+function findTokenSpan(node: Node | null): HTMLElement | null {
+  while (node && node !== document.body) {
+    if (node instanceof HTMLElement && node.dataset.tokStart != null) return node
+    node = node.parentNode
+  }
+  return null
+}
+
+function onKeywordsMouseup(e: MouseEvent) {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+  const range = sel.getRangeAt(0)
+  const a = findTokenSpan(range.startContainer)
+  const b = findTokenSpan(range.endContainer)
+  if (!a || !b) return
+  const flowA = sectionTokensFor(a.dataset.lineId!).find(
+    (x) =>
+      x.lineId === a.dataset.lineId &&
+      x.start === parseInt(a.dataset.tokStart!, 10),
+  )
+  const flowB = sectionTokensFor(b.dataset.lineId!).find(
+    (x) =>
+      x.lineId === b.dataset.lineId &&
+      x.start === parseInt(b.dataset.tokStart!, 10),
+  )
+  if (!flowA || !flowB) return
+  const sectionFlow = sectionTokensFor(flowA.lineId)
+  if (!sectionFlow.some((x) => x.lineId === flowB.lineId)) return // different section
+  const i1 = sectionFlow.findIndex(
+    (x) => x.lineId === flowA.lineId && x.start === flowA.start,
+  )
+  const i2 = sectionFlow.findIndex(
+    (x) => x.lineId === flowB.lineId && x.start === flowB.start,
+  )
+  if (i1 === -1 || i2 === -1) return
+  const [lo, hi] = i1 <= i2 ? [i1, i2] : [i2, i1]
+  const slice = sectionFlow.slice(lo, hi + 1)
+  const ranges = rangesFromTokens(slice)
+  if (ranges.length === 0) return
+  const firstSpan = document.querySelector<HTMLElement>(
+    `span[data-line-id="${slice[0].lineId}"][data-tok-start="${slice[0].start}"]`,
+  )
+  const lastSpan = document.querySelector<HTMLElement>(
+    `span[data-line-id="${slice[slice.length - 1].lineId}"][data-tok-start="${slice[slice.length - 1].start}"]`,
+  )
+  if (firstSpan && lastSpan) {
+    const snapped = document.createRange()
+    snapped.setStart(firstSpan, 0)
+    snapped.setEnd(lastSpan, lastSpan.childNodes.length)
+    sel.removeAllRanges()
+    sel.addRange(snapped)
+  }
+  if (e.shiftKey) {
+    for (const r of ranges) {
+      if (!pendingRanges.value.some((p) => rangesEqual(p, r))) pendingRanges.value.push(r)
+    }
+    return
+  }
+  composing.value = { ranges, text: rangesText(ranges) }
+  pendingRanges.value = []
+  viewing.value = null
+}
+
+function commitPending() {
+  if (pendingRanges.value.length === 0) return
+  composing.value = {
+    ranges: [...pendingRanges.value],
+    text: rangesText(pendingRanges.value),
+  }
+  pendingRanges.value = []
+  viewing.value = null
+}
+
+function clearPending() {
+  pendingRanges.value = []
 }
 
 const hoveredAnnotationId = ref<string | null>(null)
@@ -296,7 +429,33 @@ function printPage() {
     <TopBar />
   </div>
 
-  <main v-if="track" class="pt-24 pb-32 max-w-[860px] mx-auto px-gutter">
+  <main
+    v-if="track"
+    class="pt-24 pb-32 mx-auto px-gutter relative"
+    :style="{ maxWidth: containerWidth + 'px' }"
+    :class="resizing ? 'select-none' : ''"
+  >
+    <!-- Resize handles -->
+    <div
+      class="no-print hidden md:block absolute top-24 bottom-32 -left-3 w-6 cursor-ew-resize group z-30"
+      @mousedown="startResize($event, 'left')"
+      title="Drag to resize"
+    >
+      <div
+        class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+        :class="resizing ? '!opacity-100 bg-zinc-900' : ''"
+      ></div>
+    </div>
+    <div
+      class="no-print hidden md:block absolute top-24 bottom-32 -right-3 w-6 cursor-ew-resize group z-30"
+      @mousedown="startResize($event, 'right')"
+      title="Drag to resize"
+    >
+      <div
+        class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+        :class="resizing ? '!opacity-100 bg-zinc-900' : ''"
+      ></div>
+    </div>
     <!-- Sub-header: breadcrumb, mode tabs, actions -->
     <div class="no-print flex items-center justify-between mb-10">
       <RouterLink
@@ -311,7 +470,7 @@ function printPage() {
         class="inline-flex items-center gap-1 p-1 rounded-full ghost-border bg-white/40 glass-blur"
       >
         <button
-          v-for="m in (['read', 'annotate', 'keywords', 'rhymes'] as Mode[])"
+          v-for="m in (['keywords', 'read', 'rhymes'] as Mode[])"
           :key="m"
           @click="mode = m"
           class="px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest transition-colors"
@@ -370,19 +529,24 @@ function printPage() {
         <!-- Keywords: section flows as one justified block -->
         <p
           v-if="mode === 'keywords'"
-          class="mt-4 uppercase text-active-lyric text-justify py-1"
+          class="mt-4 uppercase text-active-lyric text-justify py-1 select-text leading-[2.4]"
+          @mouseup="onKeywordsMouseup"
         >
           <template v-for="(t, i) in sectionTokens(s.lines)" :key="i"><span
             v-if="t.lineStart"
             class="text-on-surface/30"
           >/{{ '\u00a0' }}</span><span
-            class="px-1 transition-colors"
+            class="px-1 transition-colors cursor-pointer rounded"
             :class="[
               tokenAnnotations(t.lineId, t).length
-                ? 'text-on-surface cursor-pointer'
-                : 'text-on-surface/25',
-              isTokenHovered(t.lineId, t) ? 'bg-zinc-900/[0.06]' : 'rounded',
+                ? 'text-on-surface'
+                : 'text-on-surface/25 hover:text-on-surface/60',
+              isTokenHovered(t.lineId, t) ? 'bg-zinc-900/[0.06]' : '',
+              pendingHasToken(t) ? 'bg-amber-200/60 text-on-surface' : '',
             ]"
+            :data-line-id="t.lineId"
+            :data-tok-start="t.start"
+            :data-tok-end="t.end"
             @click="clickKeywordToken(t.lineId, t, $event)"
             @mouseenter="
               hoveredAnnotationId = tokenAnnotations(t.lineId, t)[0]?.id ?? null
@@ -392,17 +556,16 @@ function printPage() {
         </p>
         <div v-else class="space-y-3 mt-4">
           <template v-for="l in s.lines" :key="l.id">
-            <!-- Read / Annotate: render as LyricLine with annotation underlines -->
+            <!-- Read: render as LyricLine with annotation underlines -->
             <div
-              v-if="mode === 'read' || mode === 'annotate'"
+              v-if="mode === 'read'"
               :data-line-id="l.id"
               class="px-2 py-1 rounded transition-colors"
-              :class="mode === 'annotate' ? 'hover:bg-zinc-900/[0.02]' : ''"
             >
               <LyricLine
                 :line="l"
                 :italic="s.kind === 'chorus'"
-                :annotations="trackAnnotations.filter((a) => a.lineId === l.id)"
+                :annotations="trackAnnotations.filter((a) => a.ranges.some((r) => r.lineId === l.id))"
                 :show-annotations="true"
                 :show-rhymes="false"
                 @annotation-click="onAnnotationClick"
@@ -436,22 +599,26 @@ function printPage() {
     class="fixed inset-0 flex items-center justify-center text-on-surface/50"
   >Track not found.</p>
 
-  <!-- Annotate-mode floating popup -->
+  <!-- Keywords pending-selection floating bar -->
   <Transition name="fade">
     <div
-      v-if="mode === 'annotate' && !composing && !viewing"
+      v-if="mode === 'keywords' && pendingRanges.length > 0 && !composing && !viewing"
       class="no-print fixed bottom-10 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 bg-white/80 glass-blur ghost-border rounded-full shadow-xl shadow-zinc-900/5 flex items-center gap-3"
     >
       <span class="text-[11px] uppercase tracking-widest text-on-surface/60">
-        Select a phrase
+        {{ pendingRanges.length }} pieces
       </span>
       <button
-        @mousedown.prevent="tryStartCompose"
+        @click="commitPending"
         class="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900 text-white rounded-full text-[11px] uppercase tracking-widest hover:bg-zinc-700 transition-colors"
       >
         <Icon name="edit_note" :size="14" filled />
         Annotate
       </button>
+      <button
+        @click="clearPending"
+        class="text-[11px] uppercase tracking-widest text-on-surface/40 hover:text-on-surface"
+      >Clear</button>
     </div>
   </Transition>
 

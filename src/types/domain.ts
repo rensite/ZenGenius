@@ -49,12 +49,16 @@ export const ANNOTATION_TAGS: {
   { key: 'dictionary', label: 'Dictionary', marker: '≡', markerClass: 'text-purple-500' },
 ]
 
-export interface Annotation {
-  id: ID
-  trackId: ID
+export interface AnnotationRange {
   lineId: ID
   charStart: number
   charEnd: number
+}
+
+export interface Annotation {
+  id: ID
+  trackId: ID
+  ranges: AnnotationRange[]
   body: string
   tags: AnnotationTag[]
   contributor?: string
