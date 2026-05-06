@@ -13,9 +13,8 @@ import AnnotationPanel from '@/components/AnnotationPanel.vue'
 import AnnotationComposerPanel from '@/components/AnnotationComposerPanel.vue'
 import LyricsEditorPanel from '@/components/LyricsEditorPanel.vue'
 import TrackAboutPanel from '@/components/TrackAboutPanel.vue'
-import DictionaryEditorPanel from '@/components/DictionaryEditorPanel.vue'
 import Icon from '@/components/Icon.vue'
-import type { Annotation, AnnotationRange, AnnotationTag, DictionaryEntry, RhymeColor } from '@/types/domain'
+import type { Annotation, AnnotationRange, AnnotationTag, RhymeColor } from '@/types/domain'
 import { useUIStore } from '@/stores/ui'
 
 const props = defineProps<{ id: string }>()
@@ -207,63 +206,17 @@ function tokenAnnotations(lineId: string, t: Token): Annotation[] {
   )
 }
 
-// Precompile one regex per dict term and run them once per line. The result
-// (Map<lineId, [{start, end, entry}, ...]>) is what the keywords-mode template
-// queries on hover, so we never rerun 1600 regexes per pointer move.
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-const dictRangesByLine = computed<Map<string, { start: number; end: number; entry: DictionaryEntry }[]>>(() => {
-  const map = new Map<string, { start: number; end: number; entry: DictionaryEntry }[]>()
-  const t = track.value
-  if (!t || trackDictionary.value.length === 0) return map
-
-  const patterns = trackDictionary.value
-    .map((e) => ({ entry: e, term: e.term?.trim() ?? '' }))
-    .filter((p) => p.term.length >= 2)
-    .map((p) => ({
-      entry: p.entry,
-      rx: new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(p.term)}(?![\\p{L}\\p{N}])`, 'giu'),
-    }))
-
-  for (const s of t.sections) {
-    for (const l of s.lines) {
-      const ranges: { start: number; end: number; entry: DictionaryEntry }[] = []
-      for (const { entry, rx } of patterns) {
-        rx.lastIndex = 0
-        let m: RegExpExecArray | null
-        while ((m = rx.exec(l.text))) {
-          ranges.push({ start: m.index, end: m.index + m[0].length, entry })
-          if (m.index === rx.lastIndex) rx.lastIndex++
-        }
-      }
-      if (ranges.length) map.set(l.id, ranges)
-    }
-  }
-  return map
-})
-
-function tokenDictEntries(lineId: string, t: Token): DictionaryEntry[] {
-  const ranges = dictRangesByLine.value.get(lineId) ?? []
-  return ranges
-    .filter((r) => r.start < t.end && r.end > t.start)
-    .map((r) => r.entry)
-}
-
-function tokenDictTitle(lineId: string, t: Token): string | undefined {
-  const entries = tokenDictEntries(lineId, t)
-  if (entries.length === 0) return undefined
-  return entries
-    .map((e) => `${e.term} — ${e.definition.length > 200 ? e.definition.slice(0, 200) + '…' : e.definition}`)
-    .join('\n\n')
+// Translations are annotations tagged 'translation'. Pull them out once so the
+// hover/click handlers don't filter the annotations array on every interaction.
+function tokenTranslations(lineId: string, t: Token): Annotation[] {
+  return tokenAnnotations(lineId, t).filter((a) => a.tags.includes('translation'))
 }
 
 // Custom hover tooltip. Browser-native `title` has a ~1s delay before it shows
-// up, which makes the dict feel broken. This state drives a small floating
-// panel that appears instantly when the pointer enters a dict-highlighted
-// token and disappears on leave.
-const dictTooltip = ref<{ visible: boolean; x: number; y: number; entries: DictionaryEntry[] }>({
+// up, which makes the translation gloss feel broken. This state drives a small
+// floating panel that appears instantly when the pointer enters a translation-
+// tagged token and disappears on leave.
+const dictTooltip = ref<{ visible: boolean; x: number; y: number; entries: Annotation[] }>({
   visible: false,
   x: 0,
   y: 0,
@@ -271,7 +224,7 @@ const dictTooltip = ref<{ visible: boolean; x: number; y: number; entries: Dicti
 })
 
 function showDictTooltip(lineId: string, t: Token, e: MouseEvent) {
-  const entries = tokenDictEntries(lineId, t)
+  const entries = tokenTranslations(lineId, t)
   if (entries.length === 0) return
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   dictTooltip.value = {
@@ -359,10 +312,6 @@ function togglePendingToken(t: FlowToken) {
   else pendingRanges.value.push(tokenRange)
 }
 
-// State for the dictionary editor panel. `existing` opens an edit-form; absence
-// with a defaultTerm opens a new-entry form.
-const editingDict = ref<{ existing?: DictionaryEntry; defaultTerm: string } | null>(null)
-
 function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   const sel = window.getSelection()
   if (e.shiftKey) {
@@ -377,18 +326,7 @@ function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   }
   if (sel && !sel.isCollapsed) return
   e.stopPropagation()
-
-  // Dictionary takes precedence over annotations when the token has both —
-  // the dark-blue tint already signals "translation" to the user, so a click
-  // should open that. Multiple matching dict entries (overlapping terms) open
-  // the first one; the rest stay accessible via the About panel.
-  const dictHits = tokenDictEntries(lineId, t)
-  if (dictHits.length > 0) {
-    hideDictTooltip()
-    editingDict.value = { existing: dictHits[0], defaultTerm: dictHits[0].term }
-    return
-  }
-
+  hideDictTooltip()
   const found = tokenAnnotations(lineId, t)
   if (found.length > 0) {
     viewing.value = { annotations: found, lineId }
@@ -400,22 +338,6 @@ function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   }
   pendingRanges.value = []
   viewing.value = null
-}
-
-async function saveDictEdit(payload: { term: string; definition: string }) {
-  if (!editingDict.value || !track.value) return
-  const existing = editingDict.value.existing
-  if (existing) {
-    await dictionaryStore.update({ ...existing, term: payload.term, definition: payload.definition })
-  } else {
-    await dictionaryStore.add({ trackId: props.id, term: payload.term, definition: payload.definition })
-  }
-  editingDict.value = null
-}
-
-async function removeDictEdit(id: string) {
-  await dictionaryStore.remove(props.id, id)
-  editingDict.value = null
 }
 
 function findTokenSpan(node: Node | null): HTMLElement | null {
@@ -650,7 +572,7 @@ function printPage() {
           >/{{ '\u00a0' }}</span><span
             class="px-1 transition-colors cursor-pointer rounded"
             :class="[
-              tokenDictEntries(t.lineId, t).length
+              tokenTranslations(t.lineId, t).length
                 ? 'dict-highlight'
                 : tokenAnnotations(t.lineId, t).length
                   ? 'text-on-surface'
@@ -658,7 +580,6 @@ function printPage() {
               isTokenHovered(t.lineId, t) ? 'bg-zinc-900/[0.06]' : '',
               pendingHasToken(t) ? 'bg-amber-200/60 text-on-surface' : '',
             ]"
-            :title="tokenDictTitle(t.lineId, t)"
             :data-line-id="t.lineId"
             :data-tok-start="t.start"
             :data-tok-end="t.end"
@@ -685,9 +606,7 @@ function printPage() {
                 :line="l"
                 :italic="s.kind === 'chorus'"
                 :annotations="trackAnnotations.filter((a) => a.ranges.some((r) => r.lineId === l.id))"
-                :dictionary="trackDictionary"
                 :show-annotations="true"
-                :show-dictionary="true"
                 :show-rhymes="false"
                 @annotation-click="onAnnotationClick"
               />
@@ -818,17 +737,6 @@ function printPage() {
     />
   </Transition>
 
-  <Transition name="slide-right" class="no-print">
-    <DictionaryEditorPanel
-      v-if="editingDict"
-      :existing="editingDict.existing"
-      :default-term="editingDict.defaultTerm"
-      @close="editingDict = null"
-      @save="saveDictEdit"
-      @remove="removeDictEdit"
-    />
-  </Transition>
-
   <Transition name="fade">
     <div
       v-if="dictTooltip.visible"
@@ -838,11 +746,8 @@ function printPage() {
       <p
         v-for="e in dictTooltip.entries"
         :key="e.id"
-        class="not-first:mt-2"
-      >
-        <span class="font-semibold">{{ e.term }}</span>
-        <span class="text-white/60"> — </span>{{ e.definition }}
-      </p>
+        class="whitespace-pre-wrap not-first:mt-2"
+      >{{ e.body }}</p>
     </div>
   </Transition>
 </template>
