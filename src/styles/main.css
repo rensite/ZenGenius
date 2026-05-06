@@ -134,8 +134,8 @@
   main {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    max-width: 14cm !important;
     margin: 0 auto !important;
+    /* Respect the inline max-width set by the resize handle in TrackView. */
   }
   @page {
     margin: 18mm;
