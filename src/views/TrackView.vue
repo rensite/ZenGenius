@@ -13,6 +13,7 @@ import AnnotationPanel from '@/components/AnnotationPanel.vue'
 import AnnotationComposerPanel from '@/components/AnnotationComposerPanel.vue'
 import LyricsEditorPanel from '@/components/LyricsEditorPanel.vue'
 import TrackAboutPanel from '@/components/TrackAboutPanel.vue'
+import DictionaryEditorPanel from '@/components/DictionaryEditorPanel.vue'
 import Icon from '@/components/Icon.vue'
 import type { Annotation, AnnotationRange, AnnotationTag, DictionaryEntry, RhymeColor } from '@/types/domain'
 import { useUIStore } from '@/stores/ui'
@@ -358,6 +359,10 @@ function togglePendingToken(t: FlowToken) {
   else pendingRanges.value.push(tokenRange)
 }
 
+// State for the dictionary editor panel. `existing` opens an edit-form; absence
+// with a defaultTerm opens a new-entry form.
+const editingDict = ref<{ existing?: DictionaryEntry; defaultTerm: string } | null>(null)
+
 function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   const sel = window.getSelection()
   if (e.shiftKey) {
@@ -372,6 +377,18 @@ function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   }
   if (sel && !sel.isCollapsed) return
   e.stopPropagation()
+
+  // Dictionary takes precedence over annotations when the token has both —
+  // the dark-blue tint already signals "translation" to the user, so a click
+  // should open that. Multiple matching dict entries (overlapping terms) open
+  // the first one; the rest stay accessible via the About panel.
+  const dictHits = tokenDictEntries(lineId, t)
+  if (dictHits.length > 0) {
+    hideDictTooltip()
+    editingDict.value = { existing: dictHits[0], defaultTerm: dictHits[0].term }
+    return
+  }
+
   const found = tokenAnnotations(lineId, t)
   if (found.length > 0) {
     viewing.value = { annotations: found, lineId }
@@ -383,6 +400,22 @@ function clickKeywordToken(lineId: string, t: Token, e: MouseEvent) {
   }
   pendingRanges.value = []
   viewing.value = null
+}
+
+async function saveDictEdit(payload: { term: string; definition: string }) {
+  if (!editingDict.value || !track.value) return
+  const existing = editingDict.value.existing
+  if (existing) {
+    await dictionaryStore.update({ ...existing, term: payload.term, definition: payload.definition })
+  } else {
+    await dictionaryStore.add({ trackId: props.id, term: payload.term, definition: payload.definition })
+  }
+  editingDict.value = null
+}
+
+async function removeDictEdit(id: string) {
+  await dictionaryStore.remove(props.id, id)
+  editingDict.value = null
 }
 
 function findTokenSpan(node: Node | null): HTMLElement | null {
@@ -782,6 +815,17 @@ function printPage() {
       :track="track"
       :dictionary="trackDictionary"
       @close="aboutOpen = false"
+    />
+  </Transition>
+
+  <Transition name="slide-right" class="no-print">
+    <DictionaryEditorPanel
+      v-if="editingDict"
+      :existing="editingDict.existing"
+      :default-term="editingDict.defaultTerm"
+      @close="editingDict = null"
+      @save="saveDictEdit"
+      @remove="removeDictEdit"
     />
   </Transition>
 

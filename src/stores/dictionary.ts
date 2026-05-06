@@ -23,5 +23,14 @@ export const useDictionaryStore = defineStore('dictionary', () => {
     byTrack.value[trackId] = (byTrack.value[trackId] ?? []).filter((d) => d.id !== id)
   }
 
-  return { byTrack, fetchFor, add, remove }
+  async function update(entry: DictionaryEntry) {
+    const saved = await driver.saveDictionaryEntry(entry)
+    const list = byTrack.value[entry.trackId] ?? []
+    const idx = list.findIndex((d) => d.id === entry.id)
+    if (idx === -1) list.push(saved)
+    else list[idx] = saved
+    byTrack.value[entry.trackId] = [...list]
+  }
+
+  return { byTrack, fetchFor, add, update, remove }
 })
