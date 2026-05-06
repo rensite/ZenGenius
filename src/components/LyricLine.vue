@@ -48,7 +48,7 @@ const colorCls: Record<RhymeColor, string> = {
   rose: 'rhyme-rose',
 }
 
-const tagMeta = (t: AnnotationTag) => ANNOTATION_TAGS.find((x) => x.key === t)!
+const tagMeta = (t: AnnotationTag) => ANNOTATION_TAGS.find((x) => x.key === t)
 
 const spans = computed<Span[]>(() => {
   const text = props.line.text
@@ -145,12 +145,13 @@ function onSpanClick(span: Span, e: MouseEvent) {
           v-if="s.tags.length"
           class="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[11px] leading-none pointer-events-none select-none"
         >
-          <span
-            v-for="t in s.tags"
-            :key="t"
-            :class="tagMeta(t).markerClass"
-            class="font-bold"
-          >{{ tagMeta(t).marker }}</span>
+          <template v-for="t in s.tags" :key="t">
+            <span
+              v-if="tagMeta(t)"
+              :class="tagMeta(t)!.markerClass"
+              class="font-bold"
+            >{{ tagMeta(t)!.marker }}</span>
+          </template>
         </span>
         {{ s.text }}
       </span>
