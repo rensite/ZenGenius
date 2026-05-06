@@ -14,5 +14,13 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.ts'],
+    // Clobber any VITE_SUPABASE_* values that .env.local may have leaked in.
+    // The auth and driver tests assume the app is in LocalDriver-fallback mode
+    // (no real Supabase client); a populated env would silently change the path
+    // under test.
+    env: {
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+    },
   },
 })
