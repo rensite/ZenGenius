@@ -64,6 +64,15 @@
     border-bottom-color: #000;
     background: rgba(0, 0, 0, 0.02);
   }
+  .dict-highlight {
+    background-color: rgba(30, 58, 138, 0.12);
+    border-radius: 0.125rem;
+    padding: 0 1px;
+    transition: background-color 0.2s ease;
+  }
+  .dict-highlight:hover {
+    background-color: rgba(30, 58, 138, 0.22);
+  }
   .ref-dot {
     position: absolute;
     top: -4px;

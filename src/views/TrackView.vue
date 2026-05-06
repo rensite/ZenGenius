@@ -566,7 +566,9 @@ function printPage() {
                 :line="l"
                 :italic="s.kind === 'chorus'"
                 :annotations="trackAnnotations.filter((a) => a.ranges.some((r) => r.lineId === l.id))"
+                :dictionary="trackDictionary"
                 :show-annotations="true"
+                :show-dictionary="true"
                 :show-rhymes="false"
                 @annotation-click="onAnnotationClick"
               />

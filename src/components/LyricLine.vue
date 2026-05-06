@@ -4,6 +4,7 @@ import {
   ANNOTATION_TAGS,
   type Annotation,
   type AnnotationTag,
+  type DictionaryEntry,
   type Line,
   type RhymeColor,
   type RhymeMark,
@@ -14,8 +15,10 @@ interface Props {
   active?: boolean
   italic?: boolean
   annotations?: Annotation[]
+  dictionary?: DictionaryEntry[]
   rhymes?: { mark: RhymeMark; color: RhymeColor }[]
   showAnnotations?: boolean
+  showDictionary?: boolean
   showRhymes?: boolean
 }
 
@@ -23,8 +26,10 @@ const props = withDefaults(defineProps<Props>(), {
   active: true,
   italic: false,
   annotations: () => [],
+  dictionary: () => [],
   rhymes: () => [],
   showAnnotations: true,
+  showDictionary: true,
   showRhymes: true,
 })
 
@@ -49,6 +54,27 @@ const colorCls: Record<RhymeColor, string> = {
 }
 
 const tagMeta = (t: AnnotationTag) => ANNOTATION_TAGS.find((x) => x.key === t)!
+
+// Terms that match too greedily produce visual noise; restrict to entries with
+// real content. The regex uses Unicode property escapes so AAVE terms with
+// apostrophes ("ain't") and Cyrillic words are bounded correctly.
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const dictPatterns = computed(() => {
+  if (!props.showDictionary) return []
+  const out: { entry: DictionaryEntry; rx: RegExp }[] = []
+  for (const e of props.dictionary) {
+    const term = e.term?.trim()
+    if (!term || term.length < 2) continue
+    out.push({
+      entry: e,
+      rx: new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(term)}(?![\\p{L}\\p{N}])`, 'giu'),
+    })
+  }
+  return out
+})
 
 const spans = computed<Span[]>(() => {
   const text = props.line.text
@@ -75,6 +101,19 @@ const spans = computed<Span[]>(() => {
           tags: a.tags,
         })
       }
+    }
+  }
+  for (const { entry, rx } of dictPatterns.value) {
+    rx.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = rx.exec(text))) {
+      ranges.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        classes: ['dict-highlight', 'cursor-help'],
+        title: `${entry.term} — ${entry.definition.slice(0, 160)}${entry.definition.length > 160 ? '…' : ''}`,
+      })
+      if (m.index === rx.lastIndex) rx.lastIndex++
     }
   }
   if (props.showRhymes) {
