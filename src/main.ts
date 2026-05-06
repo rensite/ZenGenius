@@ -3,11 +3,23 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import { router } from './router'
 import { ensureSeed } from './seed'
+import { useAuthStore } from './stores/auth'
 import './styles/main.css'
 
-ensureSeed().then(() => {
+async function bootstrap() {
+  await ensureSeed()
+
   const app = createApp(App)
-  app.use(createPinia())
+  const pinia = createPinia()
+  app.use(pinia)
+
+  // Resolve the initial Supabase session before mounting so the router guard
+  // sees the correct auth state on the first navigation.
+  const auth = useAuthStore(pinia)
+  await auth.init()
+
   app.use(router)
   app.mount('#app')
-})
+}
+
+bootstrap()

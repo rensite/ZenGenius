@@ -24,7 +24,16 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
+        env:
+          # Both values are safe to embed in the client bundle: the URL is public
+          # by design, and the anon key relies on Postgres RLS for protection
+          # (see supabase/migrations/0001_init.sql). They live in
+          # Settings → Secrets and variables → Actions so they can be rotated
+          # without a code change.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

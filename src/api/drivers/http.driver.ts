@@ -5,7 +5,7 @@ import type {
   RhymeGroup,
   Track,
 } from '@/types/domain'
-import type { DataDriver } from './local.driver'
+import type { DataDriver } from './types'
 
 export class HttpDriver implements DataDriver {
   constructor(private baseURL: string) {}

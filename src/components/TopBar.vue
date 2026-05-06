@@ -8,12 +8,22 @@ import { useAnnotationsStore } from '@/stores/annotations'
 import { useRhymesStore } from '@/stores/rhymes'
 import { useDictionaryStore } from '@/stores/dictionary'
 import { downloadExport, importData, pickFile } from '@/api/dataIO'
+import { useAuthStore } from '@/stores/auth'
+import { isCloud } from '@/api'
 
 const router = useRouter()
 const tracks = useTracksStore()
 const annotations = useAnnotationsStore()
 const rhymes = useRhymesStore()
 const dictionary = useDictionaryStore()
+const auth = useAuthStore()
+
+async function onSignOut() {
+  menuOpen.value = false
+  await auth.signOut()
+  refreshAllStores()
+  router.replace('/login')
+}
 
 const menuOpen = ref(false)
 
@@ -104,11 +114,23 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
           </button>
           <div class="h-px bg-zinc-100 my-1" />
           <button
+            v-if="!isCloud"
             @click="reset"
             class="w-full flex items-center gap-3 px-4 py-2 text-body-sm text-on-surface hover:bg-zinc-50 transition-colors text-left"
           >
             <Icon name="refresh" :size="16" />
             Reset to seed
+          </button>
+          <div v-if="isCloud && auth.user" class="px-4 py-2 text-xs text-zinc-400 truncate">
+            {{ auth.user.email }}
+          </div>
+          <button
+            v-if="isCloud"
+            @click="onSignOut"
+            class="w-full flex items-center gap-3 px-4 py-2 text-body-sm text-on-surface hover:bg-zinc-50 transition-colors text-left"
+          >
+            <Icon name="logout" :size="16" />
+            Sign out
           </button>
         </div>
       </Transition>

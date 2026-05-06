@@ -19,7 +19,30 @@ npm run build    # vue-tsc --noEmit && vite build
 npm run preview
 ```
 
-No test runner, no linter, no formatter configured.
+```sh
+npm test         # vitest run
+npm run test:watch
+```
+
+No linter or formatter configured.
+
+## Backend (Supabase)
+
+The app picks a data driver at startup:
+
+1. **Supabase** — if `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. Per-user library, Google OAuth, RLS-isolated tables. Read-cache in IndexedDB (Dexie); writes require a network connection.
+2. **HTTP** — if `VITE_API_URL` is set. Custom backend.
+3. **Local** — fallback. Data lives in `localStorage`, no auth, single device. Used for dev.
+
+### One-time setup
+
+1. Create a Supabase project. Copy `Project URL` and `anon` key into `.env.local` (see [.env.example](.env.example)).
+2. Apply the schema: `npx supabase db push` (requires `supabase login` and `supabase link --project-ref <ref>`). The migration in [supabase/migrations/0001_init.sql](supabase/migrations/0001_init.sql) creates the four tables, indexes, and RLS policies; `owner_id` is set server-side from the JWT, never trusted from the client.
+3. Enable Google OAuth in **Authentication → Providers → Google**. Add `https://<project>.supabase.co/auth/v1/callback` as the authorized redirect URI in Google Cloud Console. Add your app's site URL (e.g. `http://localhost:5173`, your GitHub Pages URL) to **Authentication → URL Configuration**.
+
+### Local Postgres for development
+
+`npx supabase start` (requires Docker) brings up a local Postgres + Studio at port 54323. Migrations run automatically.
 
 ## Routes
 
@@ -36,9 +59,9 @@ Defined in [src/router/index.ts](src/router/index.ts):
 src/
   App.vue, main.ts
   api/
-    index.ts          # picks driver: HttpDriver if VITE_API_URL set, else LocalDriver
+    index.ts          # picks driver: SupabaseDriver | HttpDriver | LocalDriver
     dataIO.ts         # import/export helpers
-    drivers/          # local.driver.ts, http.driver.ts (DataDriver interface)
+    drivers/          # types.ts, local.driver.ts, http.driver.ts, supabase.driver.ts, cache.ts (Dexie)
   components/         # TopBar, LyricLine, AnnotationPanel/Composer, TrackComposer, etc.
   router/index.ts
   seed/
