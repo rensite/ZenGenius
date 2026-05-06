@@ -617,12 +617,13 @@ function printPage() {
           >/{{ '\u00a0' }}</span><span
             class="px-1 transition-colors cursor-pointer rounded"
             :class="[
-              tokenAnnotations(t.lineId, t).length
-                ? 'text-on-surface'
-                : 'text-on-surface/25 hover:text-on-surface/60',
+              tokenDictEntries(t.lineId, t).length
+                ? 'dict-highlight'
+                : tokenAnnotations(t.lineId, t).length
+                  ? 'text-on-surface'
+                  : 'text-on-surface/25 hover:text-on-surface/60',
               isTokenHovered(t.lineId, t) ? 'bg-zinc-900/[0.06]' : '',
               pendingHasToken(t) ? 'bg-amber-200/60 text-on-surface' : '',
-              tokenDictEntries(t.lineId, t).length ? 'dict-highlight' : '',
             ]"
             :title="tokenDictTitle(t.lineId, t)"
             :data-line-id="t.lineId"
