@@ -16,6 +16,7 @@ import TrackAboutPanel from '@/components/TrackAboutPanel.vue'
 import Icon from '@/components/Icon.vue'
 import type { Annotation, AnnotationRange, AnnotationTag, RhymeColor } from '@/types/domain'
 import { useUIStore } from '@/stores/ui'
+import { exportElementAsSvg, slugify } from '@/lib/exportSvg'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -493,6 +494,18 @@ async function clearRhymes() {
 function printPage() {
   window.print()
 }
+
+const sectionEls = ref<Record<string, HTMLElement | null>>({})
+function setSectionEl(id: string, el: unknown) {
+  sectionEls.value[id] = (el as HTMLElement | null) ?? null
+}
+
+function exportSectionSvg(sectionId: string, label: string) {
+  const el = sectionEls.value[sectionId]
+  if (!el || !track.value) return
+  const name = `${slugify(track.value.artist)}-${slugify(track.value.title)}-${slugify(label)}.svg`
+  exportElementAsSvg(el, name)
+}
 </script>
 
 <template>
@@ -595,7 +608,17 @@ function printPage() {
 
     <!-- Lyrics -->
     <article class="space-y-12">
-      <section v-for="s in track.sections" :key="s.id">
+      <div v-for="s in track.sections" :key="s.id" class="relative group">
+        <button
+          data-no-export
+          @click="exportSectionSvg(s.id, s.label)"
+          class="no-print absolute -top-1 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] uppercase tracking-widest text-on-surface/40 hover:text-on-surface px-2 py-1 rounded-full hover:bg-zinc-900/5 flex items-center gap-1"
+          title="Save block as SVG"
+        >
+          <Icon name="download" :size="12" />
+          SVG
+        </button>
+        <section :ref="(el) => setSectionEl(s.id, el)">
         <SectionHeader :label="s.label" :performer="s.performer" />
         <!-- Keywords: section flows as one justified block -->
         <p
@@ -667,7 +690,8 @@ function printPage() {
             </p>
           </template>
         </div>
-      </section>
+        </section>
+      </div>
     </article>
   </main>
 
