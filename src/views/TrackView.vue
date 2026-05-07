@@ -348,12 +348,49 @@ function findTokenSpan(node: Node | null): HTMLElement | null {
   return null
 }
 
+// Each token span renders `${text}${trailingSpace}` in ONE text node, so its
+// text length is tokenLength + 1. If a drag starts in that trailing space the
+// browser sets startContainer to the previous span's text node — which made
+// annotations bleed into the prior word ("FAVORITE GROUP, THE BLACK GUY…"
+// when only "THE BLACK GUY" was selected). These helpers slide the boundary
+// onto the visually-selected token.
+function nextTokenSibling(span: HTMLElement): HTMLElement | null {
+  let n: Element | null = span.nextElementSibling
+  while (n) {
+    if (n instanceof HTMLElement && n.dataset.tokStart != null) return n
+    n = n.nextElementSibling
+  }
+  return null
+}
+function prevTokenSibling(span: HTMLElement): HTMLElement | null {
+  let n: Element | null = span.previousElementSibling
+  while (n) {
+    if (n instanceof HTMLElement && n.dataset.tokStart != null) return n
+    n = n.previousElementSibling
+  }
+  return null
+}
+function adjustStartSpan(range: Range, span: HTMLElement | null): HTMLElement | null {
+  if (!span || range.startContainer.nodeType !== Node.TEXT_NODE) return span
+  const tokLen = parseInt(span.dataset.tokEnd!, 10) - parseInt(span.dataset.tokStart!, 10)
+  // Offset past the token text means the cursor is in the trailing whitespace.
+  if (range.startOffset > tokLen) return nextTokenSibling(span) ?? span
+  return span
+}
+function adjustEndSpan(range: Range, span: HTMLElement | null): HTMLElement | null {
+  if (!span || range.endContainer.nodeType !== Node.TEXT_NODE) return span
+  // Selection ending at offset 0 of a span means nothing of this token is
+  // visually selected — retreat to the previous token.
+  if (range.endOffset === 0) return prevTokenSibling(span) ?? span
+  return span
+}
+
 function onKeywordsMouseup(e: MouseEvent) {
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
   const range = sel.getRangeAt(0)
-  const a = findTokenSpan(range.startContainer)
-  const b = findTokenSpan(range.endContainer)
+  const a = adjustStartSpan(range, findTokenSpan(range.startContainer))
+  const b = adjustEndSpan(range, findTokenSpan(range.endContainer))
   if (!a || !b) return
   const flowA = sectionTokensFor(a.dataset.lineId!).find(
     (x) =>
