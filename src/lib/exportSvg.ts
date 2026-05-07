@@ -164,13 +164,6 @@ export function exportElementAsSvg(el: HTMLElement, filename: string) {
     texts: [],
   }
 
-  const pageBg = window.getComputedStyle(document.body).backgroundColor
-  if (!isTransparent(pageBg)) {
-    ctx.bgs.unshift(
-      `<rect x="0" y="0" width="${width}" height="${height}" fill="${pageBg}"/>`,
-    )
-  }
-
   walk(el, ctx)
 
   const svg =

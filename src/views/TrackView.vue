@@ -49,6 +49,18 @@ const containerWidth = ref<number>(
 )
 const resizing = ref(false)
 
+function setContainerWidth(n: number) {
+  if (!Number.isFinite(n)) return
+  const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(n)))
+  containerWidth.value = clamped
+  localStorage.setItem('lyriclens.containerWidth', String(clamped))
+}
+
+function onWidthInput(e: Event) {
+  const v = parseInt((e.target as HTMLInputElement).value, 10)
+  setContainerWidth(v)
+}
+
 function startResize(e: MouseEvent, side: 'left' | 'right' = 'right') {
   e.preventDefault()
   resizing.value = true
@@ -722,6 +734,24 @@ function exportSectionSvg(sectionId: string, label: string) {
       >Clear</button>
     </div>
   </Transition>
+
+  <!-- Container width indicator + exact entry -->
+  <div
+    class="no-print fixed bottom-10 right-10 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-white/70 glass-blur ghost-border rounded-full text-[11px] uppercase tracking-widest transition-shadow"
+    :class="resizing ? 'shadow-xl ring-2 ring-zinc-900/10' : 'shadow-sm'"
+  >
+    <input
+      type="number"
+      :min="MIN_WIDTH"
+      :max="MAX_WIDTH"
+      :step="10"
+      :value="containerWidth"
+      @input="onWidthInput"
+      class="w-14 bg-transparent text-right tabular-nums focus:outline-none text-on-surface"
+      aria-label="Container width in pixels"
+    />
+    <span class="text-on-surface/40">px</span>
+  </div>
 
   <!-- Rhymes-mode palette -->
   <Transition name="fade">

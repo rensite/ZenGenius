@@ -3,7 +3,7 @@ defineProps<{ label: string; performer?: string }>()
 </script>
 
 <template>
-  <header class="mb-4 text-center">
+  <header class="mb-4 text-center" data-no-export>
     <span
       class="text-[12px] text-on-tertiary-container/60 uppercase tracking-[0.2em]"
     >
